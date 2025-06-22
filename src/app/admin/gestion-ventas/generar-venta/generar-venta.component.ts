@@ -77,6 +77,8 @@ export class GenerarVentaComponent implements OnInit {
         this.tipoDoc = '01';
         serieInput.value = 'F001';
       }
+      // Recalcular totales cuando cambie el tipo de comprobante
+      this.actualizarTotales();
     });
     serieInput.value = 'B001';  // Valor inicial
 
@@ -111,6 +113,9 @@ export class GenerarVentaComponent implements OnInit {
         this.selectedTipoDoc = ''; // Resetear si el tipo actual no es válido
       }
     }
+    
+    // Recalcular totales después de cambiar el tipo de comprobante
+    this.actualizarTotales();
   }
   
 
@@ -245,25 +250,44 @@ export class GenerarVentaComponent implements OnInit {
     const producto = this.productosSeleccionados[index];
     producto.cantidad = cantidad;
     producto.valor = producto.cantidad * producto.producto.precio_venta;
-    producto.igv = producto.valor * 0.18;
-    producto.precioConIgv = producto.valor + producto.igv;
+    
+    // Aplicar IGV solo si es factura, 0.00 si es boleta
+    if (this.selectedComprobante === 'factura') {
+      producto.igv = producto.valor * 0.18;
+      producto.precioConIgv = producto.valor + producto.igv;
+    } else {
+      // Para boleta: IGV = 0.00, precio con IGV = valor sin IGV
+      producto.igv = 0.00;
+      producto.precioConIgv = producto.valor;
+    }
+    
     this.actualizarTotales();
   }
+  
   actualizarTotales() {
     this.totalGravada = this.calcularTotalGravada();
     this.igv = this.calcularIgv();
     this.totalPagar = this.calcularTotalPagar();
     this.cdr.detectChanges();
   }
+  
   calcularTotalGravada(): number {
     return this.productosSeleccionados.reduce((total, item) => total + (item.valor || 0), 0); 
   }
+  
   calcularIgv(): number {
+    // Si es boleta, IGV siempre es 0.00
+    if (this.selectedComprobante === 'boleta') {
+      return 0.00;
+    }
+    // Si es factura, calcular IGV al 18%
     return this.productosSeleccionados.reduce((total, item) => total + (item.igv || 0), 0);  
   }
+  
   calcularTotalPagar(): number {
     return this.productosSeleccionados.reduce((total, item) => total + (item.precioConIgv || 0), 0); 
   }
+  
   eliminarProducto(index: number) {
     this.productosSeleccionados.splice(index, 1);
     this.actualizarTotales();
@@ -360,20 +384,37 @@ export class GenerarVentaComponent implements OnInit {
         console.error('Error al obtener los productos:', error);
       }
     );
-}
+  }
 
   anadirArticulo() {
     const productoSeleccionado = this.listaProductos.find(
       (prod) => prod.id_producto === parseInt(this.selectedProducto)
     );
     if (productoSeleccionado && !this.productosSeleccionados.find(p => p.producto.id_producto === productoSeleccionado.id_producto)) {
+      
+      let igvCalculado: number;
+      let precioConIgvCalculado: number;
+      const valorBase = productoSeleccionado.precio_venta * this.cantidad;
+      
+      // Aplicar lógica según tipo de comprobante
+      if (this.selectedComprobante === 'factura') {
+        // Para factura: aplicar IGV del 18%
+        igvCalculado = valorBase * 0.18;
+        precioConIgvCalculado = valorBase + igvCalculado;
+      } else {
+        // Para boleta: IGV = 0.00, precio con IGV = valor base
+        igvCalculado = 0.00;
+        precioConIgvCalculado = valorBase;
+      }
+      
       this.productosSeleccionados.push({
         producto: productoSeleccionado,
         cantidad: this.cantidad,
-        valor: productoSeleccionado.precio_venta * this.cantidad,
-        igv: productoSeleccionado.precio_venta * this.cantidad * 0.18,
-        precioConIgv: productoSeleccionado.precio_venta * this.cantidad * 1.18
+        valor: valorBase,
+        igv: igvCalculado,
+        precioConIgv: precioConIgvCalculado
       });
+      
       this.actualizarTotales();
       this.cdr.detectChanges(); 
     }
@@ -440,19 +481,3 @@ export class GenerarVentaComponent implements OnInit {
   }  
 
 }
-
-
-// ------------------------------------------------------
-// ElegirTipoDoc() {
-//   this.tipoDoc = this.selectedTipoDoc;
-
-//   // Validar coherencia sin cambiar automáticamente el comprobante
-//   if (this.selectedComprobante === 'boleta' && this.selectedTipoDoc === '6' && this.totalPagar > 700.00) {
-//     alert('Para Boletas con RUC, el monto máximo permitido es 700.00.');
-//     this.selectedTipoDoc = ''; // Resetear si es necesario
-//     return;
-//   }
-
-//     //Sincronizar la configuración de comprobantes y tipos de documento
-//     this.ElegirComprobante();
-//   }
